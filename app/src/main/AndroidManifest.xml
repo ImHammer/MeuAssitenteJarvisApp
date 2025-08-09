@@ -3,6 +3,8 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
 
     <application
         android:allowBackup="true"
@@ -14,6 +16,11 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.JarvisAssistent"
         tools:targetApi="31">
+        <service
+            android:name=".service.SpeechRecognitionService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
