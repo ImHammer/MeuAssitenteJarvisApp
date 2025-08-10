@@ -46,12 +46,10 @@ fun VoiceToTextScreen(navController: NavController) {
     val context = LocalContext.current
     var service: SpeechRecognitionService? by remember { mutableStateOf(null) }
 
-    // Conecta ao serviço
     DisposableEffect(Unit) {
         val connection = object : ServiceConnection {
             override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
                 service = (binder as SpeechRecognitionService.LocalBinder).getService()
-                // Inicia a escuta assim que o serviço é conectado
                 service?.startListening()
             }
             override fun onServiceDisconnected(name: ComponentName?) {
@@ -73,16 +71,13 @@ fun VoiceToTextScreen(navController: NavController) {
         contract = ActivityResultContracts.RequestPermission(),
         onResult = { isGranted ->
             if (isGranted) {
-                // Inicia o serviço em primeiro plano se a permissão for concedida
                 ContextCompat.startForegroundService(context, Intent(context, SpeechRecognitionService::class.java))
             } else {
-                // Informa o usuário que a permissão é necessária
-                // Você pode mostrar um Snackbar ou uma mensagem na tela
+                // TODO: Informa o usuário que a permissão é necessária
             }
         }
     )
 
-    // Solicita a permissão ao entrar na tela
     LaunchedEffect(key1 = true) {
         recordAudioLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
     }
@@ -103,7 +98,6 @@ fun VoiceToTextScreen(navController: NavController) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // Esfera Reativa
             SoundWaveSphere(
                 rmsDb = state.rmsDb,
                 isListening = state.isListening,
@@ -112,15 +106,12 @@ fun VoiceToTextScreen(navController: NavController) {
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // Texto reconhecido
             Text(
                 text = state.text.ifBlank { "Ouvindo..." },
                 style = MaterialTheme.typography.headlineSmall,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(bottom = 50.dp) // Adiciona um padding inferior
             )
-
-            // O botão foi removido daqui
         }
     }
 }

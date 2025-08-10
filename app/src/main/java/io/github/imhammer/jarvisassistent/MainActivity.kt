@@ -19,7 +19,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Instancia o DataStore aqui
         val settingsDataStore = SettingsDataStore(applicationContext)
 
         setContent {
@@ -28,16 +27,12 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
                 ) {
-                    // 1. Crie o NavController
                     val navController = rememberNavController()
 
-                    // 2. Crie o NavHost (roteador de telas)
                     NavHost(navController = navController, startDestination = "main") {
-                        // Rota para a tela principal
                         composable("main") {
                             VoiceToTextScreen(navController = navController)
                         }
-                        // Rota para a tela de configurações
                         composable("settings") {
                             SettingsScreen(navController = navController, settingsDataStore = settingsDataStore)
                         }

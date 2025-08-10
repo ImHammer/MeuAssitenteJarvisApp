@@ -27,10 +27,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import io.github.imhammer.jarvisassistent.lib.AssistantIntent
+import io.github.imhammer.jarvisassistent.lib.IntentParser
+import io.github.imhammer.jarvisassistent.data.AppDatabase
+import io.github.imhammer.jarvisassistent.data.Event
+import io.github.imhammer.jarvisassistent.data.Task
 
 // 1. Implementar a interface do TTS OnInitListener
 class SpeechRecognitionService : Service(), TextToSpeech.OnInitListener {
-
     private lateinit var settingsDataStore: SettingsDataStore
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var assistantName = "Jarvis" // Valor padrão
@@ -47,6 +51,9 @@ class SpeechRecognitionService : Service(), TextToSpeech.OnInitListener {
 
     private val _state = MutableStateFlow(VoiceToTextState())
     val state = _state.asStateFlow()
+
+    private val database by lazy { AppDatabase.getDatabase(this) }
+    private val dao by lazy { database.assistenteDao() }
 
     companion object {
         const val CHANNEL_ID = "SpeechRecognitionServiceChannel"
@@ -148,6 +155,52 @@ class SpeechRecognitionService : Service(), TextToSpeech.OnInitListener {
         tts.speak(text, TextToSpeech.QUEUE_FLUSH, params, UTTERANCE_ID)
     }
 
+    // Função interna para processar o comando e evitar repetição de código
+    private fun processCommand(payload: String) {
+        val intent = IntentParser.parse(payload)
+        isAwake = false
+
+        serviceScope.launch { // Envolvemos tudo em uma coroutine
+            when (intent) {
+                is AssistantIntent.AddTask -> {
+                    val task = Task(description = intent.taskDescription, date = "Hoje")
+                    dao.insertTask(task)
+                    speak("Ok, anotei: ${intent.taskDescription}")
+                }
+                is AssistantIntent.AddTaskForDate -> {
+                    val task = Task(description = intent.taskDescription, date = intent.date)
+                    dao.insertTask(task)
+                    speak("Anotado para ${intent.date}: ${intent.taskDescription}")
+                }
+                is AssistantIntent.ListPendingTasks -> {
+                    val tasks = dao.getPendingTasks().first() // .first() pega o valor atual do Flow
+                    if (tasks.isEmpty()) {
+                        speak("Você não tem nenhuma tarefa pendente.")
+                    } else {
+                        val taskList = tasks.joinToString(separator = ". ") { "Para ${it.date}: ${it.description}" }
+                        speak("Suas tarefas são: $taskList")
+                    }
+                }
+                is AssistantIntent.AddEventForDate -> {
+                    val event = Event(description = intent.eventDescription, date = intent.date)
+                    dao.insertEvent(event)
+                    speak("Evento adicionado para ${intent.date}: ${intent.eventDescription}")
+                }
+                is AssistantIntent.ListTodaysEvents -> {
+                    val events = dao.getEventsForDate("hoje").first()
+                    if (events.isEmpty()) {
+                        speak("Você não tem eventos para hoje.")
+                    } else {
+                        val eventList = events.joinToString(separator = ". ") { it.description }
+                        speak("Seus eventos para hoje são: $eventList")
+                    }
+                }
+                is AssistantIntent.Unknown -> {
+                    speak("Desculpe, não entendi o comando.")
+                }
+            }
+        }
+    }
 
     private fun setupRecognizer() {
         if (!SpeechRecognizer.isRecognitionAvailable(application)) {
@@ -184,24 +237,34 @@ class SpeechRecognitionService : Service(), TextToSpeech.OnInitListener {
             override fun onResults(results: Bundle?) {
                 val transcribedText = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.getOrNull(0)
 
-                if (!transcribedText.isNullOrBlank()) {
-                    _state.update { it.copy(text = transcribedText) }
+                if (transcribedText.isNullOrBlank()) {
+                    startListening()
+                    return
+                }
 
-                    // LÓGICA DO "WAKE WORD"
-                    val command = transcribedText.lowercase()
-                    if (isAwake) {
-                        // Se já está "acordado", processa o comando (aqui, só repete)
-                        speak(command)
-                        isAwake = false // Volta a dormir depois de executar
-                    } else if (command.contains(assistantName.lowercase())) {
-                        // Se o nome foi chamado, acorda e responde
+                _state.update { it.copy(text = transcribedText) }
+                val command = transcribedText.lowercase()
+                val assistantNameLower = assistantName.lowercase()
+
+                if (isAwake) {
+                    // Cenário 1: O assistente já estava acordado esperando um comando.
+                    processCommand(command)
+                } else if (command.contains(assistantNameLower)) {
+                    // Cenário 2: O nome foi detectado na frase.
+                    // Extrai o que foi dito DEPOIS do nome do assistente.
+                    val commandPayload = command.substringAfter(assistantNameLower).trim()
+
+                    if (commandPayload.isBlank()) {
+                        // A pessoa só disse "Jarvis". Responda e espere o próximo comando.
                         isAwake = true
-                        speak("Pois não?") // Ou "Sim?", "À sua disposição?"
+                        speak("Pois não?")
                     } else {
-                        // Se não é o nome e não está acordado, apenas volta a ouvir
-                        startListening()
+                        // A pessoa disse "Jarvis" e mais alguma coisa.
+                        // Tenta processar o que veio depois como um comando direto.
+                        processCommand(commandPayload)
                     }
                 } else {
+                    // Cenário 3: Não estava acordado e o nome não foi dito. Continue ouvindo.
                     startListening()
                 }
             }
